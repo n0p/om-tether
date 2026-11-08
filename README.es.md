@@ -84,6 +84,41 @@ aunque la cámara tarde o se caiga, y al cerrar se detienen los trabajos.
 Los textos de la interfaz viven en `omtether/i18n.py` (dos diccionarios, `ES` y
 `EN`). Los mensajes que llegan de la librería por `logging` siguen en español.
 
+## Otras apps: darktable, digiKam, Entangle… (vía libgphoto2)
+
+darktable **no tiene API de plugins para el tethering**: su sala de tethering es
+código C que pasa por libgphoto2 (`gp_abilities_list_detect()` para listar
+cámaras, `gp_camera_init()` para abrirlas), así que la vía de entrada es
+libgphoto2, no un plugin de darktable.
+
+La buena noticia es que libgphoto2 ya tiene todo para este cuerpo: el driver de
+puerto `ptpip` descubre la cámara por mDNS, `Olympus:OM-1MarkII` está en su tabla
+de modelos, la captura usa la misma secuencia `0x9481(3)` + `0x9481(6)` que este
+proyecto y el live view usa `0xD06D`. Sólo hay una cosa que no encaja: el **GUID
+del iniciador**. libgphoto2 se inventa uno aleatorio y lo guarda en
+`~/.gphoto/settings`, mientras que la cámara sólo acepta `00*10 + MAC emparejada
+invertida`, así que contesta `InitFail 1`.
+
+`omtether gphoto` escribe el GUID correcto donde libgphoto2 lo lee:
+
+```bash
+omtether gphoto --host <ip-de-la-cámara>            # ver los candidatos
+omtether gphoto --host <ip-de-la-cámara> --write    # probarlos y guardar el aceptado
+gphoto2 --camera "PTP/IP Camera" --port ptpip:<ip-de-la-cámara> --summary
+darktable                                           # la cámara sale en tethering
+```
+
+El comando prueba cada MAC local contra la cámara, así que guarda la que la
+cámara acepta de verdad. Si no acepta ninguna, empareja antes el ordenador
+(`omtether pair --slot N`): la ranura es lo que compara la cámara.
+
+Aviso: libgphoto2 mira la tarjeta justo después del disparo. En este cuerpo eso
+puede tumbar el enlace PTP/IP mientras se escribe el RAW; si darktable pierde la
+cámara tras unas cuantas fotos, usa `omtether daemon` y la importación desde
+carpeta. El arreglo bueno (probar las MACs locales en vez de inventar un GUID, y
+esperar al evento `0xC102` antes de tocar la tarjeta) va en
+`camlibs/ptp2/ptpip.c`.
+
 ## Qué hay dentro del instalador original
 
 `OCSetup.exe` es un bootstrapper con un CAB embebido:

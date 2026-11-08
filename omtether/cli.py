@@ -326,6 +326,54 @@ def cmd_gui(args) -> int:
     return gui_main()
 
 
+def cmd_gphoto(args) -> int:
+    """Configura libgphoto2 (darktable, digiKam…) para hablar con la cámara."""
+    from . import gphoto
+
+    current = gphoto.read_setting()
+    print("fichero de ajustes: %s" % gphoto.SETTINGS)
+    print("ptp2_ip=guid actual: %s" % (current or "(no hay)"))
+    cands = gphoto.candidates()
+    if not cands:
+        print("no hay interfaces de red con MAC utilizable")
+        return 1
+    print("\ncandidatos (MAC local -> GUID que espera la cámara):")
+    for mac, guid in cands:
+        mark = " *" if current and gphoto.parse_guid(current) == guid else ""
+        print("  %-17s  %s%s" % (mac, gphoto.guid_text(guid), mark))
+
+    chosen: tuple[str, bytes] | None = None
+    if args.host:
+        print("\nprobando el handshake contra %s..." % args.host)
+        for mac, guid in cands:
+            ok = gphoto.probe(args.host, guid, timeout=args.timeout)
+            print("  %-17s  %s" % (mac, "aceptado" if ok else "rechazado"))
+            if ok and chosen is None:
+                chosen = (mac, guid)
+        if chosen is None:
+            print("\nningún GUID fue aceptado: la cámara no responde o esta MAC no")
+            print("está en ninguna ranura; empareja con `omtether pair --slot N`.")
+            return 2
+    else:
+        chosen = cands[0]
+
+    mac, guid = chosen
+    text = gphoto.guid_text(guid)
+    print("\nelegido: %s -> %s" % (mac, text))
+    if args.write:
+        gphoto.write_setting(text)
+        print("escrito en %s" % gphoto.SETTINGS)
+        print("\nahora:")
+        print('  gphoto2 --camera "PTP/IP Camera" --port ptpip:%s --summary'
+              % (args.host or "<ip-de-la-cámara>"))
+        print("  darktable   -> la cámara sale en la sala de tethering")
+    else:
+        print("(no se ha escrito nada; añade --write)")
+        print("línea para %s:" % gphoto.SETTINGS)
+        print("  ptp2_ip=guid=%s" % text)
+    return 0
+
+
 def cmd_app(args) -> int:
     """API HTTP de la app móvil (OI.Share): la cámara crea su propia Wi-Fi."""
     from .cgi import CgiError, Oishare
@@ -617,7 +665,14 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("-v", "--verbose", action="count", default=0)
     g.set_defaults(func=cmd_gui)
 
-    ap = sub.add_parser("app", help="OI.Share HTTP API (camera acts as access point)")
+    ap_gph = sub.add_parser("gphoto",
+                            help="configure libgphoto2 (darktable, digiKam) for this camera")
+    ap_gph.add_argument("--host", help="camera IP; if given, check which GUID it accepts")
+    ap_gph.add_argument("--write", action="store_true", help="write the setting to ~/.gphoto/settings")
+    ap_gph.add_argument("--timeout", type=float, default=6.0)
+    ap_gph.set_defaults(func=cmd_gphoto)
+
+    ap = sub.add_parser("app", help="OI.Share HTTP API (camera's own access point)")
     ap.add_argument("action", choices=["mode", "shoot", "bulb", "stop", "prop",
                                       "setprop", "list", "get", "live", "info"])
     ap.add_argument("value", nargs="?", default="")

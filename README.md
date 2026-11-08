@@ -85,6 +85,41 @@ The interface texts live in `omtether/i18n.py` (two dictionaries, `ES` and
 `EN`). Messages coming from the library through `logging` are still in
 Spanish.
 
+## Other apps: darktable, digiKam, Entangle… (via libgphoto2)
+
+darktable has **no plugin API for tethering**: its tethering view is C code that
+goes through libgphoto2 (`gp_abilities_list_detect()` to list cameras,
+`gp_camera_init()` to open them), so the way in is libgphoto2, not a darktable
+plugin.
+
+The good news is that libgphoto2 already has everything for this body: the
+`ptpip` port driver discovers the camera over mDNS, `Olympus:OM-1MarkII` is in
+its model table, the capture path is the same `0x9481(3)` + `0x9481(6)` sequence
+this project uses, and live view uses `0xD06D`. Only one thing does not match:
+the **initiator GUID**. libgphoto2 invents a random one and stores it in
+`~/.gphoto/settings`, while the camera only accepts `00*10 + reversed(paired
+MAC)`, so it answers `InitFail 1`.
+
+`omtether gphoto` writes the right GUID where libgphoto2 will read it:
+
+```bash
+omtether gphoto --host <camera-ip>            # show the candidates
+omtether gphoto --host <camera-ip> --write    # test them and store the accepted one
+gphoto2 --camera "PTP/IP Camera" --port ptpip:<camera-ip> --summary
+darktable                                     # the camera shows up in tethering
+```
+
+The command tries each local MAC against the camera, so the value it stores is
+the one the camera really accepts. If none is accepted, pair the computer first
+(`omtether pair --slot N`) — the slot is what the camera compares against.
+
+Caveat: libgphoto2 reads the card right after the shot. On this body that can
+drop the PTP/IP link while the RAW is still being written; if darktable loses
+the camera after a few frames, fall back to `omtether daemon` plus darktable's
+import-from-folder. A proper upstream fix (try the local MACs instead of a
+random GUID, and wait for the `0xC102` event before touching the card) belongs
+in `camlibs/ptp2/ptpip.c`.
+
 ## What is inside the original installer
 
 `OCSetup.exe` is a bootstrapper with an embedded CAB:
