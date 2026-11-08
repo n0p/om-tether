@@ -124,8 +124,9 @@ class BridgeConfig:
     skip_jpeg: bool = False
     mdns: bool = False                   # anunciarse para que darktable lo vea
     keepalive: float = 15.0
-    event_delay: float = 1.2             # espera antes de mirar la tarjeta
-    poll_window: float = 8.0             # cuánto insistir buscando el fichero
+    event_delay: float = 0.35            # espera antes de mirar la tarjeta
+    poll_interval: float = 0.35          # ritmo de sondeo (y de refresco de eventos)
+    poll_window: float = 20.0            # cuánto insistir buscando el fichero
 
 
 @dataclass
@@ -153,6 +154,11 @@ class Bridge(threading.Thread):
         self._event_lock = threading.Lock()
         self._advertiser: mdns.Advertiser | None = None
         self._last_busy = 0.0
+        self._watching = threading.Event()   # un solo vigilante de tarjeta a la vez
+        self._before_capture: set[int] | None = None
+        self._client_handles: set[int] = set()   # las baja el cliente, no nosotros
+        self._known: set[int] = set()
+        self._last_client_capture = 0.0
 
     # -- cámara ----------------------------------------------------------
     def connect(self) -> None:
@@ -225,6 +231,9 @@ class Bridge(threading.Thread):
 
         keepalive = threading.Thread(target=self._keepalive_loop, daemon=True)
         keepalive.start()
+        if self.cfg.download and self.cfg.outdir is not None:
+            self._known = self._handles()
+            threading.Thread(target=self._body_poll_loop, daemon=True).start()
         while not self._stop.is_set():
             try:
                 conn, peer = srv.accept()
@@ -247,6 +256,24 @@ class Bridge(threading.Thread):
         except OSError:
             pass
         self.close()
+
+    def _body_poll_loop(self) -> None:
+        """Fotos hechas en el cuerpo: se descubren sondeando y se descargan."""
+        while not self._stop.is_set():
+            time.sleep(max(1.5, self.cfg.poll_interval))
+            if self._watching.is_set():
+                continue
+            if time.monotonic() - self._last_client_capture < 8.0:
+                continue        # el cliente está bajando su foto: no molestamos
+            now = self._handles()
+            new = [h for h in sorted(now - self._known) if h not in self._client_handles]
+            self._known |= now
+            if not new:
+                continue
+            files = self._only_files(new)
+            if files:
+                log.info("puente: %d fichero(s) nuevos en el cuerpo; se descargan", len(files))
+                self._download(files)
 
     def _keepalive_loop(self) -> None:
         while not self._stop.is_set():
@@ -333,9 +360,8 @@ class Bridge(threading.Thread):
             self._respond(conn, 0x2001, xid)
             return
 
-        before = None
         if code == OC_CAPTURE and params and params[0] == 3:
-            before = self._handles()
+            self._before_capture = self._handles()
 
         try:
             with self._lock:
@@ -355,9 +381,12 @@ class Bridge(threading.Thread):
             self._send_data_out(conn, xid, data)
         self._respond(conn, rc, xid, rparams)
 
-        if code == OC_CAPTURE and params and params[0] in (3, 6):
+        if code == OC_CAPTURE and params and params[0] == 6:
             self.stats.captures += 1
-            threading.Thread(target=self._after_capture, args=(before,), daemon=True).start()
+            if not self._watching.is_set():
+                self._watching.set()
+                threading.Thread(target=self._after_capture,
+                                 args=(self._before_capture,), daemon=True).start()
 
     def _respond(self, conn: socket.socket, code: int, xid: int,
                  params: list[int] | None = None) -> None:
@@ -416,22 +445,48 @@ class Bridge(threading.Thread):
 
     def _after_capture(self, before: set[int] | None) -> None:
         """La cámara no anuncia nada: se mira la tarjeta y se fabrican los eventos."""
-        time.sleep(self.cfg.event_delay)
-        known = before or set()
-        deadline = time.monotonic() + self.cfg.poll_window
-        while time.monotonic() < deadline and not self._stop.is_set():
-            now = self._handles()
-            new = sorted(now - known)
-            if new:
-                handle = new[0]
-                log.info("puente: foto nueva 0x%x, se anuncian 0xC103/0xC102", handle)
-                self._emit(EVENT_CAPTURE_COMPLETE, [0])
-                self._emit(EVENT_OBJECT_ADDED_OM, [handle])
-                if self.cfg.download and self.cfg.outdir is not None:
-                    self._download(new)
-                return
-            time.sleep(0.7)
-        log.warning("puente: no apareció ningún fichero tras el disparo")
+        try:
+            # OJO: sólo 0xC102 con el handle. libgphoto2 <= 2.5.32 no filtra
+            # Param1 == 0 en 0xC103 y aborta el disparo con "Could not capture".
+            known = before or set()
+            deadline = time.monotonic() + self.cfg.poll_window
+            while time.monotonic() < deadline and not self._stop.is_set():
+                time.sleep(self.cfg.poll_interval)
+                if not self._watching.is_set():
+                    return
+                now = self._handles()
+                new = sorted(now - known)
+                files = self._only_files(new)
+                if files:
+                    handle = max(files)
+                    log.info("puente: foto nueva 0x%x (%d objetos nuevos), se anuncian "
+                             "0xC103/0xC102", handle, len(files))
+                    # marcarlas ANTES de emitir: el sondeo del cuerpo no debe
+                    # intentar bajarlas mientras el cliente las pide
+                    self._client_handles.update(files)
+                    self._known.update(files)
+                    self._last_client_capture = time.monotonic()
+                    self._emit(EVENT_OBJECT_ADDED_OM, [handle])
+                    return
+                time.sleep(0.7)
+            log.warning("puente: no apareció ningún fichero tras el disparo")
+        finally:
+            self._watching.clear()
+
+    def _only_files(self, handles: list[int]) -> list[int]:
+        """Descarta carpetas (0x3001) y handles de asociación."""
+        out = []
+        for handle in handles:
+            with self._lock:
+                if self.session is None:
+                    return out
+                try:
+                    info = self.session.get_object_info(handle)
+                except Exception:  # noqa: BLE001
+                    continue
+            if info.format != 0x3001 and info.size:
+                out.append(handle)
+        return out
 
     def _download(self, handles: list[int]) -> None:
         outdir = self.cfg.outdir

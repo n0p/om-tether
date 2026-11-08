@@ -142,7 +142,9 @@ omtether bridge --host <ip-de-la-cámara> --out ~/Pictures/omtether --mdns
 
 El puente acepta el GUID que le mande libgphoto2, reenvía las operaciones,
 responde a las escrituras de `0xD052` sin tocar la cámara, vigila la tarjeta tras
-el disparo y **fabrica** los eventos `0xC103`/`0xC102` que libgphoto2 espera. Con
+el disparo y **fabrica** el evento `0xC102` (objeto añadido) que libgphoto2
+espera. Sólo ese, con el handle: libgphoto2 ≤ 2.5.32 interpreta un `0xC103` con
+`Param1 = 0` como «no hay fichero» y aborta el disparo. Con
 `--mdns` se anuncia como `_ptp._tcp`, así que darktable —que sólo lista cámaras
 autodetectadas— lo ve sin configurar nada. Y sigue volcando cada foto nueva al
 directorio de destino, así que el mismo proceso hace de daemon.

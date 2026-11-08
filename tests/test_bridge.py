@@ -49,8 +49,9 @@ def main() -> int:
                 seen.append((ev.code, ev.params))
                 if ev.code in (0xC102, 0xC002) and ev.params and ev.params[0]:
                     break
-        got = next(((c, p) for c, p in seen if c in (0xC102, 0xC002) and p and p[0]), None)
-        ev_ok = got is not None and 0xC103 in [c for c, _ in seen]
+        # sólo 0xC102: libgphoto2 <= 2.5.32 aborta si ve un 0xC103 con Param1=0
+        got = next(((c, p) for c, p in seen if c == 0xC102 and p and p[0]), None)
+        ev_ok = got is not None and 0xC103 not in [c for c, _ in seen]
         print("  %s eventos sintetizados tras el disparo (%s)"
               % ("ok  " if ev_ok else "FAIL",
                  ", ".join("%s %s" % (hex(c), [hex(x) for x in p]) for c, p in seen) or "ninguno"))
