@@ -28,6 +28,8 @@ python3 -m omtether remote --host <ip> --shots 20 --interval 5 --exposure 2 --is
 python3 -m omtether remote --host <ip> --indi        # servicio INDI en :7624
 
 # 4) aplicación de escritorio (PyQt6)
+python3 -m omtether bridge --host <ip> --out ~/Pictures/omtether --mdns   # libgphoto2/darktable
+python3 -m omtether darktable          # darktable, con el puente cargado
 python3 -m omtether gui
 ```
 
@@ -72,7 +74,7 @@ empieza por `es`, inglés en otro caso).
 
 | Pestaña | Qué hace |
 |---|---|
-| **Tether (volcado)** | Volcado continuo de lo que dispares en el cuerpo. Directorio de destino y formato: `JPEG + RAW`, `Sólo JPEG` o `Sólo RAW`. |
+| **Tether (volcado)** | Volcado continuo de lo que dispares en el cuerpo. Directorio de destino y formato: `JPEG + RAW`, `Sólo JPEG` o `Sólo RAW`. La casilla **Puente PTP/IP** (con su puerto) expone la cámara a libgphoto2 en vez de sólo descargar, y el botón **Abrir darktable…** que está a su lado lanza darktable con el puente cargado. |
 | **Control remoto** | **Vista en vivo** con previsualización (JPEG 1024×768, ~1 fps) en el panel grande, botón **Disparar** y **Bulb** con segundos. |
 | **Astrofotografía** | Serie de N disparos con intervalo, ISO y exposición (0 = no tocar / la de la cámara), formato `JPEG + RAW` / `Sólo JPEG` / `Sólo RAW`, más la casilla **Activar servicio INDI** para KStars/Ekos. |
 
@@ -91,10 +93,12 @@ código C que pasa por libgphoto2 (`gp_abilities_list_detect()` para listar
 cámaras, `gp_camera_init()` para abrirlas), así que la vía de entrada es
 libgphoto2, no un plugin de darktable.
 
-La buena noticia es que libgphoto2 ya tiene todo para este cuerpo: el driver de
-puerto `ptpip` descubre la cámara por mDNS, `Olympus:OM-1MarkII` está en su tabla
-de modelos, la captura usa la misma secuencia `0x9481(3)` + `0x9481(6)` que este
-proyecto y el live view usa `0xD06D`. Sólo hay una cosa que no encaja: el **GUID
+### La vía directa (toca la configuración de libgphoto2; con el puente no hace falta)
+
+La buena noticia es que libgphoto2 ya tiene casi todo para este cuerpo:
+`Olympus:OM-1MarkII` está en su tabla de modelos, la captura usa la misma
+secuencia `0x9481(3)` + `0x9481(6)` que este proyecto y el live view usa
+`0xD06D`. Sólo hay una cosa que no encaja: el **GUID
 del iniciador**. libgphoto2 se inventa uno aleatorio y lo guarda en
 `~/.gphoto/settings`, mientras que la cámara sólo acepta `00*10 + MAC emparejada
 invertida`, así que contesta `InitFail 1`.
@@ -105,8 +109,13 @@ invertida`, así que contesta `InitFail 1`.
 omtether gphoto --host <ip-de-la-cámara>            # ver los candidatos
 omtether gphoto --host <ip-de-la-cámara> --write    # probarlos y guardar el aceptado
 gphoto2 --camera "PTP/IP Camera" --port ptpip:<ip-de-la-cámara> --summary
-darktable                                           # la cámara sale en tethering
 ```
+
+Hace falta además `ptp2=olympus_pcmode=off` en `~/.gphoto/settings`, porque su
+init de Olympus escribe `0xD052` y eso saca a este cuerpo de la Wi-Fi. Y aun así
+el disparo falla: el cuerpo no anuncia ningún evento y libgphoto2 se rinde a los
+65 s. Por eso existe el puente de abajo; esta sección queda como testimonio de lo
+que hace libgphoto2 por su cuenta.
 
 El comando prueba cada MAC local contra la cámara, así que guarda la que la
 cámara acepta de verdad. Si no acepta ninguna, empareja antes el ordenador
@@ -164,11 +173,11 @@ darktable 5.x sólo lista las cámaras que libgphoto2 devuelve por
 descubrimiento mDNS de libgphoto2 sólo se compila para macOS/Bonjour—, así que
 una cámara por Wi-Fi nunca aparece, haya puente o no.
 
-Por eso la pestaña Tether tiene **«Abrir darktable…»** cuando el puente está
-funcionando: arranca darktable con un shim `LD_PRELOAD` de 30 líneas
-(`packaging/ldpreload/`) que sólo reescribe la ruta de ese puerto a
-`ptpip:127.0.0.1:15740`. No se parchea nada del sistema; al cerrar darktable
-desaparece. Desde consola:
+Por eso la pestaña Tether tiene un botón **«Abrir darktable…»**: arranca el
+puente si no está en marcha, espera a que escuche y lanza darktable con un shim
+`LD_PRELOAD` de 30 líneas (`packaging/ldpreload/`) que sólo reescribe la ruta de
+ese puerto a `ptpip:127.0.0.1:15740`. No se parchea nada del sistema; al cerrar
+darktable desaparece. Desde consola:
 
 ```bash
 omtether darktable          # lo que pongas de más se le pasa a darktable
@@ -230,6 +239,8 @@ del protocolo deducidos de su tráfico y de la propia cámara.
 | descarga automática de cada foto | `daemon` (pestaña «Tether») |
 | explorar y descargar lo que hay en la tarjeta | `capture`, `watch` |
 | mantener el enlace vivo y reconectar | keep-alive `0x94BA`, reconexión con espera creciente |
+| que darktable y demás vean la cámara (vía libgphoto2) | `bridge` (puente PTP/IP) y el botón «Abrir darktable…» con el shim `LD_PRELOAD` |
+| que darktable y demás vean la cámara (vía libgphoto2) | `bridge` (puente PTP/IP) y botón «Abrir darktable…» con el shim `LD_PRELOAD` |
 
 **OI.Share** (app móvil, punto de acceso propio de la cámara — la vía HTTP)
 
@@ -294,7 +305,7 @@ propiedades, live view, disparo con evento y descarga). Con ella se validan
 transporte, sesión, captura, MJPEG y `watch`:
 
 ```bash
-python3 tests/run_all.py     # 8/8
+python3 tests/run_all.py     # 10/10
 ```
 
 `raw` sirve para explorar la cámara: manda cualquier opcode con parámetros y

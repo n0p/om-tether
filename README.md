@@ -28,6 +28,8 @@ python3 -m omtether remote --host <ip> --shots 20 --interval 5 --exposure 2 --is
 python3 -m omtether remote --host <ip> --indi        # INDI service on :7624
 
 # 4) desktop app (PyQt6)
+python3 -m omtether bridge --host <ip> --out ~/Pictures/omtether --mdns   # libgphoto2/darktable
+python3 -m omtether darktable          # darktable, with the bridge loaded
 python3 -m omtether gui
 ```
 
@@ -72,7 +74,7 @@ English otherwise).
 
 | Tab | What it does |
 |---|---|
-| **Tether (auto-download)** | Continuous download of whatever you shoot on the body. Destination folder and format: `JPEG + RAW`, `JPEG only` or `RAW only`. |
+| **Tether (auto-download)** | Continuous download of whatever you shoot on the body. Destination folder and format: `JPEG + RAW`, `JPEG only` or `RAW only`. The **PTP/IP bridge** checkbox (plus its port) exposes the camera to libgphoto2 instead of only downloading, and the **Open darktable…** button next to it launches darktable with the bridge loaded. |
 | **Remote control** | **Live view** preview (JPEG 1024×768, ~1 fps) in the large panel, a **Shoot** button and **Bulb** with seconds. |
 | **Astrophotography** | Sequence of N shots with interval, ISO and exposure (0 = leave as is / camera setting), format `JPEG + RAW` / `JPEG only` / `RAW only`, plus the **Enable INDI service** box for KStars/Ekos. |
 
@@ -92,9 +94,8 @@ goes through libgphoto2 (`gp_abilities_list_detect()` to list cameras,
 `gp_camera_init()` to open them), so the way in is libgphoto2, not a darktable
 plugin.
 
-The good news is that libgphoto2 already has everything for this body: the
-`ptpip` port driver discovers the camera over mDNS, `Olympus:OM-1MarkII` is in
-its model table, the capture path is the same `0x9481(3)` + `0x9481(6)` sequence
+The good news is that libgphoto2 already has almost everything for this body:
+`Olympus:OM-1MarkII` is in its model table, the capture path is the same `0x9481(3)` + `0x9481(6)` sequence
 this project uses, and live view uses `0xD06D`. Only one thing does not match:
 the **initiator GUID**. libgphoto2 invents a random one and stores it in
 `~/.gphoto/settings`, while the camera only accepts `00*10 + reversed(paired
@@ -106,8 +107,13 @@ MAC)`, so it answers `InitFail 1`.
 omtether gphoto --host <camera-ip>            # show the candidates
 omtether gphoto --host <camera-ip> --write    # test them and store the accepted one
 gphoto2 --camera "PTP/IP Camera" --port ptpip:<camera-ip> --summary
-darktable                                     # the camera shows up in tethering
 ```
+
+It also needs `ptp2=olympus_pcmode=off` in `~/.gphoto/settings`, because its
+Olympus init writes `0xD052` and that drops this body off Wi-Fi. Even then the
+capture fails: the body announces no event and libgphoto2 gives up after 65 s.
+That is why the bridge below exists; this section is kept as a record of what
+libgphoto2 does on its own.
 
 The command tries each local MAC against the camera, so the value it stores is
 the one the camera really accepts. If none is accepted, pair the computer first
@@ -165,10 +171,11 @@ darktable 5.x only lists the cameras that libgphoto2 reports through
 libgphoto2's mDNS browsing is compiled for macOS/Bonjour only — so a Wi-Fi
 camera never appears, bridge or not.
 
-The Tether tab therefore has **“Open darktable…”** once the bridge is running:
-it starts darktable with a 30-line `LD_PRELOAD` shim (`packaging/ldpreload/`)
-that just rewrites the path of that port to `ptpip:127.0.0.1:15740`. Nothing
-system-wide is patched; close darktable and it is gone. From a terminal:
+The Tether tab therefore has an **“Open darktable…”** button: it starts the
+bridge if it is not running yet, waits until it listens, and launches darktable
+with a 30-line `LD_PRELOAD` shim (`packaging/ldpreload/`) that just rewrites the
+path of that port to `ptpip:127.0.0.1:15740`. Nothing system-wide is patched;
+close darktable and it is gone. From a terminal:
 
 ```bash
 omtether darktable          # any extra arguments go to darktable
@@ -232,6 +239,7 @@ traffic and from the camera itself.
 | automatic download of every shot | `daemon` (“Tether” tab) |
 | browsing and downloading what is on the card | `capture`, `watch` |
 | keeping the link alive and reconnecting | `0x94BA` keep-alive, reconnect with backoff |
+| letting darktable and friends see the camera (through libgphoto2) | `bridge` (PTP/IP bridge) and the "Open darktable…" button with the `LD_PRELOAD` shim |
 
 **OI.Share** (phone app, camera's own Wi-Fi access point — the HTTP path)
 
@@ -297,7 +305,7 @@ properties, live view, shutter with event and download). It validates the
 transport, the session, capture, MJPEG and `watch`:
 
 ```bash
-python3 tests/run_all.py     # 8/8
+python3 tests/run_all.py     # 10/10
 ```
 
 `raw` is for exploring the camera: it sends any opcode with parameters and

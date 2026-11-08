@@ -205,6 +205,18 @@ ISO and exposure fields; 0 means "leave as is" / "camera setting".
 
 `omtether bridge --host <ip>` (or the checkbox in the Tether tab) exposes the
 camera on `127.0.0.1:15740` so libgphoto2 can use it unpatched: it accepts any
-initiator GUID, intercepts `0xD052`, synthesises the `0xC103`/`0xC102` events
-after a capture (the body sends none in station mode) and keeps downloading the
-photos. With `--mdns` it advertises `_ptp._tcp` and darktable finds it.
+initiator GUID, intercepts `0xD052`, synthesises the `0xC102` event after a
+capture (the body sends none in station mode) and keeps downloading the photos.
+Only `0xC102`, with the handle: libgphoto2 ≤ 2.5.32 reads a `0xC103` with
+`Param1 = 0` as "no file" and aborts the shot.
+
+With `--mdns` it advertises `_ptp._tcp` through avahi (which owns port 5353).
+darktable still would not see it: it only lists what `gp_abilities_list_detect`
+returns, and on Linux the `ptpip:` port carries no host. That is what the
+**"Open darktable…"** button in the Tether tab —or `omtether darktable`— is for:
+it launches darktable with an `LD_PRELOAD` shim that rewrites that port's path to
+`ptpip:127.0.0.1:15740`. Nothing system-wide is touched.
+
+Verified against the camera: `gphoto2 --capture-image-and-download` through the
+bridge downloads the ORF with no error, and with the shim `gphoto2 --auto-detect`
+lists `PTP/IP Camera  ptpip:127.0.0.1:15740` (the same detection darktable uses).
