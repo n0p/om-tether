@@ -1,0 +1,15 @@
+pkgbase = omtether
+	pkgdesc = Tethering, remote control and astrophotography for OM System / Olympus cameras over PTP/IP
+	pkgver = 0.5.0beta1
+	pkgrel = 1
+	url = https://github.com/n0p/om-tether
+	arch = any
+	license = MIT
+	depends = python
+	optdepends = python-pyqt6: desktop app (omtether gui)
+	optdepends = python-pyusb: USB pairing (omtether pair)
+	options = !emptydirs
+	source = omtether-0.5.0beta1.tar.gz::https://github.com/n0p/om-tether/archive/refs/tags/v0.5.0-beta1.tar.gz
+	sha256sums = 9fc7cc645ae05084b95060814d136c9db159ca381d1f48037421a905a374f0c8
+
+pkgname = omtether
