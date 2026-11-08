@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------------------
+# Nada de esto va al repositorio público: son datos de mi equipo, material del
+# fabricante que no se puede redistribuir, o ruido de trabajo.
+# ---------------------------------------------------------------------------
+
+# capturas y registros (pcap, logs, JSON de estado, fotos de prueba con EXIF)
+logs/
+*.pcap
+*.pcapng
+*.log
+state/
+
+# fotos y RAW de prueba (llevan el número de serie en el EXIF)
+*.JPG
+*.jpg
+*.jpeg
+*.ORF
+*.orf
+*.part
+
+# material del fabricante: instalador, CAB/MSI, APK y su desensamblado
+OCSetup.exe
+*.cab
+*.msi
+*.apk
+work/
+docs/firmware/
+
+# cachés y entornos
+__pycache__/
+*.pyc
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+
+# script local que habla con un gateway privado de desarrollo
+tools/claude_review_when_free.sh

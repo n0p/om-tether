@@ -1,0 +1,21 @@
+[Unit]
+Description=OM System camera tethering daemon (real-time photo dump)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/src/om-tether
+# pon aquí la IP de tu cámara (o 192.168.0.10 si usas su propio punto de
+# acceso); el daemon reintenta solo si la cámara cambia de IP o se cae
+ExecStart=/usr/bin/python3 -m omtether daemon --host 192.168.0.10 \
+    --out %h/Pictures/omtether \
+    --state %h/.local/state/omtether/daemon.json \
+    --keepalive 10 --poll 2
+Restart=always
+RestartSec=10
+# la cámara entra en standby y se cae de la Wi-Fi: reintentar es lo normal
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
