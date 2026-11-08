@@ -14,6 +14,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -64,6 +65,29 @@ def ensure_shim() -> Path | None:
         log.error("no se pudo compilar el shim: %s", result.stderr.strip()[:300])
         return None
     return target
+
+
+def detect(host: str = "127.0.0.1", port: int = 15740) -> str | None:
+    """¿Ve libgphoto2 el puente en esta máquina? Devuelve la salida de gphoto2.
+
+    Se usa el binario `gphoto2 --auto-detect` porque hace exactamente la misma
+    detección que darktable y, al ser un programa que enlaza libgphoto2_port de
+    verdad, el shim lo intercepta (con ctypes no: dlsym sobre la librería se
+    salta la interposición).
+    """
+    shim = ensure_shim()
+    if shim is None:
+        return None
+    exe = shutil.which("gphoto2")
+    if exe is None:
+        return "gphoto2 no está instalado; no se puede comprobar desde aquí"
+    env = dict(os.environ)
+    env["LD_PRELOAD"] = f"{shim}:{env['LD_PRELOAD']}" if env.get("LD_PRELOAD") else str(shim)
+    env["OMTETHER_BRIDGE_HOST"] = host
+    env["OMTETHER_BRIDGE_PORT"] = str(port)
+    result = subprocess.run([exe, "--auto-detect"], env=env,
+                            capture_output=True, text=True, timeout=120)
+    return (result.stdout + result.stderr).strip()
 
 
 def spawn(args: list[str] | None = None, host: str = "127.0.0.1",

@@ -26,7 +26,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = "0.5.0~beta1-1"          # Debian version (tilde sorts before a final release)
+VERSION = "0.5.0~beta2-1"          # Debian version (tilde sorts before a final release)
 PKG = "omtether"
 MAINTAINER = "n0p <n0p@users.noreply.github.com>"
 DIST = ROOT / "dist"

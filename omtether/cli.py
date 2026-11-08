@@ -358,9 +358,14 @@ def cmd_bridge(args) -> int:
 
 def cmd_darktable(args) -> int:
     """Abre darktable con el shim que hace visible el puente PTP/IP."""
-    from .darktable import launch
+    from . import darktable
 
-    return launch(args.extra, host=args.host, port=args.port)
+    if args.check:
+        print("shim:", darktable.ensure_shim())
+        out = darktable.detect(host=args.host, port=args.port)
+        print(out if out else "no se pudo comprobar (¿falta libgphoto2?)")
+        return 0 if out and "PTP/IP Camera" in out else 1
+    return darktable.launch(args.extra, host=args.host, port=args.port)
 
 
 def cmd_gphoto(args) -> int:
@@ -726,6 +731,8 @@ def build_parser() -> argparse.ArgumentParser:
                            help="open darktable so it sees the PTP/IP bridge")
     ap_dt.add_argument("--host", default="127.0.0.1", help="bridge address")
     ap_dt.add_argument("--port", type=int, default=15740, help="bridge port")
+    ap_dt.add_argument("--check", action="store_true",
+                       help="only check whether libgphoto2 sees the bridge")
     ap_dt.add_argument("extra", nargs="*", help="arguments passed to darktable")
     ap_dt.set_defaults(func=cmd_darktable)
 
@@ -783,7 +790,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="shell command run per file; {file} is replaced by the path")
     dm.add_argument("--upload-dir", metavar="DIR",
                     help="also copy each file into this directory (synced folder)")
-    dm.add_argument("--state", metavar="FILE", default="~/.local/state/omtether/daemon.json",
+    dm.add_argument("--state", metavar="FILE", default="~/.local/state/omtether/tether.json",
                     help="json file remembering processed handles")
     dm.add_argument("--once", action="store_true", help="exit after the first download")
     dm.set_defaults(func=cmd_daemon)

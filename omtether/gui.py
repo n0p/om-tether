@@ -197,7 +197,7 @@ class TetherTab(QWidget):
             poll=self.poll.value(),
             skip_raw=fmt_flags(self.fmt)[0],
             skip_jpeg=fmt_flags(self.fmt)[1],
-            state_file=STATE_DIR / "daemon.json",
+            state_file=STATE_DIR / "tether.json",
         )
         cfg.outdir.mkdir(parents=True, exist_ok=True)
         self.daemon = TetherDaemon(cfg)

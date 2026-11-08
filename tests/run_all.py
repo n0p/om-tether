@@ -96,6 +96,23 @@ def test_daemon_skip(cam: MockCamera) -> bool:
                  "%d descargados, %d jpg" % (daemon.stats.downloaded, len(jpgs)))
 
 
+def test_state_file() -> bool:
+    """El fichero de estado debe crear su carpeta: en la GUI vive en ~/.local/state."""
+    import json
+    import tempfile
+
+    from omtether.daemon import DaemonConfig, TetherDaemon
+
+    with tempfile.TemporaryDirectory() as tmp:
+        state = Path(tmp) / "no" / "existe" / "daemon.json"
+        cfg = DaemonConfig(host="127.0.0.1", outdir=Path(tmp) / "out", state_file=state)
+        daemon = TetherDaemon(cfg)
+        daemon.seen = {7, 9}
+        daemon._save_state()
+        ok = state.is_file() and json.loads(state.read_text())["seen"] == [7, 9]
+    return check("estado del daemon crea la carpeta", ok)
+
+
 def test_bridge() -> bool:
     return subprocess.call([sys.executable, "-m", "tests.test_bridge"], cwd=ROOT) == 0
 
@@ -118,6 +135,7 @@ def main() -> int:
     try:
         results = [
             check("bridge (PTP/IP server)", test_bridge()),
+            check("estado del daemon", test_state_file()),
             check("gphoto helpers", test_gphoto()),
             check("parsers", test_parsers()),
             check("mDNS _ptp._tcp browse", test_mdns()),

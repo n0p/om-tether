@@ -1,6 +1,6 @@
 # Maintainer: n0p <n0p@users.noreply.github.com>
 pkgname=omtether
-pkgver=0.5.0beta1
+pkgver=0.5.0beta2
 pkgrel=1
 pkgdesc="Tethering, remote control and astrophotography for OM System / Olympus cameras over PTP/IP"
 arch=('any')
@@ -13,10 +13,10 @@ optdepends=(
   'python-pyusb: USB pairing (omtether pair)'
 )
 options=(!emptydirs)
-source=("$pkgname-$pkgver.tar.gz::https://github.com/n0p/om-tether/archive/refs/tags/v0.5.0-beta1.tar.gz")
+source=("$pkgname-$pkgver.tar.gz::https://github.com/n0p/om-tether/archive/refs/tags/v0.5.0-beta2.tar.gz")
 sha256sums=('9fc7cc645ae05084b95060814d136c9db159ca381d1f48037421a905a374f0c8')
 
-_srcdir="om-tether-0.5.0-beta1"
+_srcdir="om-tether-0.5.0-beta2"
 
 package() {
   local pyver

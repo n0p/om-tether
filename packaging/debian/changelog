@@ -1,3 +1,13 @@
+omtether (0.5.0~beta2-1) unstable; urgency=medium
+
+  * Tether tab: PTP/IP bridge checkbox (exposes the camera to libgphoto2) and
+    an "Open darktable…" button that starts the bridge and launches darktable
+    with the LD_PRELOAD shim it needs to see it.
+  * Bridge: accept any initiator GUID, answer 0xD052 locally, announce the
+    single 0xC102 event libgphoto2 waits for.
+  * The GUI no longer needs anything else running: the tethering engine lives
+    inside it, and its state file creates its own directory.
+
 omtether (0.5.0~beta1-1) unstable; urgency=medium
 
   * First public beta.

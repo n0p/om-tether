@@ -95,9 +95,14 @@ class TetherDaemon:
         path = self.cfg.state_file
         if not path:
             return
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"seen": sorted(self.seen)}))
-        tmp.replace(path)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"seen": sorted(self.seen)}))
+            tmp.replace(path)
+        except OSError as exc:
+            # no poder recordar el estado no debe tumbar el volcado
+            log.warning("no se pudo guardar el estado en %s (%s)", path, exc)
 
     # -- conexión -------------------------------------------------------
     def connect(self) -> None:
