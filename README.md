@@ -158,6 +158,26 @@ gphoto2 --camera "PTP/IP Camera" --port ptpip:127.0.0.1 --summary
 
 or open darktable and go to the tethering view.
 
+### darktable
+
+darktable 5.x only lists the cameras that libgphoto2 reports through
+`gp_abilities_list_detect`, and on Linux the `ptpip:` port has no host in it —
+libgphoto2's mDNS browsing is compiled for macOS/Bonjour only — so a Wi-Fi
+camera never appears, bridge or not.
+
+The Tether tab therefore has **“Open darktable…”** once the bridge is running:
+it starts darktable with a 30-line `LD_PRELOAD` shim (`packaging/ldpreload/`)
+that just rewrites the path of that port to `ptpip:127.0.0.1:15740`. Nothing
+system-wide is patched; close darktable and it is gone. From a terminal:
+
+```bash
+omtether darktable          # any extra arguments go to darktable
+```
+
+Verified: with the shim, `gphoto2 --auto-detect` — the same detection darktable
+uses — reports `PTP/IP Camera  ptpip:127.0.0.1:15740`, and a capture through the
+bridge downloads the file with no patch to libgphoto2.
+
 ## What is inside the original installer
 
 `OCSetup.exe` is a bootstrapper with an embedded CAB:

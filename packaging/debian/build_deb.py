@@ -98,6 +98,18 @@ def main() -> int:
     shutil.copy2(ROOT / "packaging/common/omtether-daemon.service",
                  units / "omtether-daemon.service")
 
+    # shim LD_PRELOAD: darktable sólo ve cámaras que libgphoto2 detecte
+    shim_dir = data_dir / "usr/lib/omtether"
+    shim_dir.mkdir(parents=True, exist_ok=True)
+    shim = shim_dir / "omtether_ptpip_shim.so"
+    cc = shutil.which("cc") or shutil.which("gcc")
+    if cc is None:
+        print("falta cc: no se puede construir el shim", file=sys.stderr)
+        return 1
+    subprocess.run([cc, "-shared", "-fPIC", "-O2", "-o", str(shim),
+                    str(ROOT / "packaging/ldpreload/omtether_ptpip_shim.c"), "-ldl"],
+                   check=True)
+
     doc = data_dir / "usr/share/doc" / PKG
     doc.mkdir(parents=True)
     shutil.copy2(ROOT / "LICENSE", doc / "copyright")

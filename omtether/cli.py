@@ -356,6 +356,13 @@ def cmd_bridge(args) -> int:
     return 0
 
 
+def cmd_darktable(args) -> int:
+    """Abre darktable con el shim que hace visible el puente PTP/IP."""
+    from .darktable import launch
+
+    return launch(args.extra, host=args.host, port=args.port)
+
+
 def cmd_gphoto(args) -> int:
     """Configura libgphoto2 (darktable, digiKam…) para hablar con la cámara."""
     from . import gphoto
@@ -715,6 +722,13 @@ def build_parser() -> argparse.ArgumentParser:
     ap_gph.add_argument("--timeout", type=float, default=6.0)
     ap_gph.set_defaults(func=cmd_gphoto)
 
+    ap_dt = sub.add_parser("darktable",
+                           help="open darktable so it sees the PTP/IP bridge")
+    ap_dt.add_argument("--host", default="127.0.0.1", help="bridge address")
+    ap_dt.add_argument("--port", type=int, default=15740, help="bridge port")
+    ap_dt.add_argument("extra", nargs="*", help="arguments passed to darktable")
+    ap_dt.set_defaults(func=cmd_darktable)
+
     ap = sub.add_parser("app", help="OI.Share HTTP API (camera's own access point)")
     ap.add_argument("action", choices=["mode", "shoot", "bulb", "stop", "prop",
                                       "setprop", "list", "get", "live", "info"])
@@ -802,7 +816,14 @@ def _sigterm(_signum, _frame):
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    # `omtether darktable --qualidad ...`: lo que no sea nuestro se le pasa tal cual
+    args, unknown = parser.parse_known_args(argv)
+    if unknown:
+        if getattr(args, "extra", None) is not None:
+            args.extra.extend(unknown)
+        else:
+            parser.error("unrecognized arguments: %s" % " ".join(unknown))
     # `timeout` y los gestores de servicios mandan SIGTERM: sin esto el proceso
     # muere sin cerrar la sesión PTP y la cámara se queda con una sesión zombie
     # (responde a ping pero no acepta nuevas conexiones hasta que se reinicia).

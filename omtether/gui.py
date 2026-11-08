@@ -153,6 +153,9 @@ class TetherTab(QWidget):
         self.bridge_port.setRange(1024, 65535)
         self.bridge_port.setValue(15740)
         self.bridge_on.toggled.connect(self.bridge_port.setEnabled)
+        self.darktable_btn = QPushButton(tr("btn.open_darktable"))
+        self.darktable_btn.setEnabled(False)
+        self.darktable_btn.clicked.connect(self.open_darktable)
 
         form = QFormLayout()
         form.addRow(tr("label.directory"), path_row(self.outdir))
@@ -160,6 +163,7 @@ class TetherTab(QWidget):
         form.addRow(tr("label.poll"), self.poll)
         form.addRow("", self.bridge_on)
         form.addRow(tr("tether.bridge_port"), self.bridge_port)
+        form.addRow("", self.darktable_btn)
 
         box = QGroupBox(tr("tether.group"))
         box.setLayout(form)
@@ -198,6 +202,16 @@ class TetherTab(QWidget):
         self.state.setText(tr("tether.state_running", dir=cfg.outdir))
         self.log.add(tr("tether.log_started", dir=cfg.outdir))
 
+    def open_darktable(self) -> None:
+        """darktable sólo ve cámaras que libgphoto2 detecte: se abre con el shim."""
+        from . import darktable
+
+        proc = darktable.spawn(port=self.bridge_port.value())
+        if proc is None:
+            self.log.add(tr("tether.log_darktable_fail"))
+        else:
+            self.log.add(tr("tether.log_darktable", pid=proc.pid))
+
     def start_bridge(self) -> None:
         """Puente PTP/IP: la cámara se expone a darktable/digiKam y sigue volcando."""
         outdir = Path(self.outdir.text()).expanduser()
@@ -218,6 +232,7 @@ class TetherTab(QWidget):
         self.log.add(tr("tether.log_bridge_hint"))
         self.poll.setEnabled(False)
         self.bridge_port.setEnabled(False)
+        self.darktable_btn.setEnabled(True)
 
     def _run(self, d: TetherDaemon) -> None:
         try:
@@ -238,6 +253,7 @@ class TetherTab(QWidget):
             self.log.add(tr("tether.log_bridge_stopped"))
         self.poll.setEnabled(True)
         self.bridge_port.setEnabled(not self.bridge_on.isChecked())
+        self.darktable_btn.setEnabled(False)
         self.button.setText(tr("btn.tether_start"))
         self.state.setText(tr("state.stopped"))
         self.log.add(tr("tether.log_stopping"))

@@ -157,6 +157,27 @@ gphoto2 --camera "PTP/IP Camera" --port ptpip:127.0.0.1 --summary
 
 o abre darktable y entra en la sala de tethering.
 
+### darktable
+
+darktable 5.x sólo lista las cámaras que libgphoto2 devuelve por
+`gp_abilities_list_detect`, y en Linux el puerto `ptpip:` va sin host —el
+descubrimiento mDNS de libgphoto2 sólo se compila para macOS/Bonjour—, así que
+una cámara por Wi-Fi nunca aparece, haya puente o no.
+
+Por eso la pestaña Tether tiene **«Abrir darktable…»** cuando el puente está
+funcionando: arranca darktable con un shim `LD_PRELOAD` de 30 líneas
+(`packaging/ldpreload/`) que sólo reescribe la ruta de ese puerto a
+`ptpip:127.0.0.1:15740`. No se parchea nada del sistema; al cerrar darktable
+desaparece. Desde consola:
+
+```bash
+omtether darktable          # lo que pongas de más se le pasa a darktable
+```
+
+Comprobado: con el shim, `gphoto2 --auto-detect` —la misma detección que usa
+darktable— devuelve `PTP/IP Camera  ptpip:127.0.0.1:15740`, y un disparo por el
+puente descarga el fichero sin tocar libgphoto2.
+
 ## Qué hay dentro del instalador original
 
 `OCSetup.exe` es un bootstrapper con un CAB embebido:

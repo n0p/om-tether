@@ -7,6 +7,7 @@ arch=('any')
 url="https://github.com/n0p/om-tether"
 license=('MIT')
 depends=('python')
+makedepends=('gcc')
 optdepends=(
   'python-pyqt6: desktop app (omtether gui)'
   'python-pyusb: USB pairing (omtether pair)'
@@ -38,6 +39,10 @@ EOF
     "$pkgdir/usr/share/icons/hicolor/scalable/apps/omtether.svg"
   install -Dm644 "$_srcdir/packaging/common/omtether-daemon.service" \
     "$pkgdir/usr/lib/systemd/user/omtether-daemon.service"
+  # shim para que darktable (vía libgphoto2) vea el puente PTP/IP
+  install -dm755 "$pkgdir/usr/lib/omtether"
+  cc -shared -fPIC -O2 -o "$pkgdir/usr/lib/omtether/omtether_ptpip_shim.so" \
+     "$_srcdir/packaging/ldpreload/omtether_ptpip_shim.c" -ldl
   install -Dm644 "$_srcdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 "$_srcdir/README.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
   install -Dm644 "$_srcdir/README.es.md" "$pkgdir/usr/share/doc/$pkgname/README.es.md"
