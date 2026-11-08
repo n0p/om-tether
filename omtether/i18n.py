@@ -89,8 +89,11 @@ ES: dict[str, str] = {
                               "--camera \"PTP/IP Camera\" --port ptpip:127.0.0.1"),
     "tether.log_bridge_stopped": "puente detenido",
     "btn.open_darktable": "Abrir darktable…",
+    "tether.darktable_tip": ("Arranca darktable con el puente cargado (si no está "
+                             "en marcha, lo arranca)"),
     "tether.log_darktable": "darktable abierto (pid {pid}) con el puente cargado",
     "tether.log_darktable_fail": "no se pudo abrir darktable (¿está instalado?)",
+    "tether.log_bridge_down": "el puente no está escuchando; ¿está la cámara en la Wi-Fi?",
     "label.poll": "Sondeo:",
     "btn.tether_start": "Iniciar volcado",
     "btn.tether_stop": "Detener volcado",
@@ -237,8 +240,11 @@ EN: dict[str, str] = {
                               "--camera \"PTP/IP Camera\" --port ptpip:127.0.0.1"),
     "tether.log_bridge_stopped": "bridge stopped",
     "btn.open_darktable": "Open darktable…",
+    "tether.darktable_tip": ("Starts darktable with the bridge loaded (starts the "
+                             "bridge too if needed)"),
     "tether.log_darktable": "darktable started (pid {pid}) with the bridge loaded",
     "tether.log_darktable_fail": "could not start darktable (is it installed?)",
+    "tether.log_bridge_down": "the bridge is not listening; is the camera on Wi-Fi?",
     "label.poll": "Polling:",
     "btn.tether_start": "Start tethering",
     "btn.tether_stop": "Stop tethering",

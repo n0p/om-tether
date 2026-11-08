@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import socket
 import sys
 import threading
 import time
@@ -154,16 +155,21 @@ class TetherTab(QWidget):
         self.bridge_port.setValue(15740)
         self.bridge_on.toggled.connect(self.bridge_port.setEnabled)
         self.darktable_btn = QPushButton(tr("btn.open_darktable"))
-        self.darktable_btn.setEnabled(False)
+        self.darktable_btn.setToolTip(tr("tether.darktable_tip"))
         self.darktable_btn.clicked.connect(self.open_darktable)
 
         form = QFormLayout()
         form.addRow(tr("label.directory"), path_row(self.outdir))
         form.addRow(tr("label.format"), self.fmt)
         form.addRow(tr("label.poll"), self.poll)
+        port_row = QWidget()
+        port_box = QHBoxLayout(port_row)
+        port_box.setContentsMargins(0, 0, 0, 0)
+        port_box.addWidget(self.bridge_port)
+        port_box.addStretch(1)
+        port_box.addWidget(self.darktable_btn)
         form.addRow("", self.bridge_on)
-        form.addRow(tr("tether.bridge_port"), self.bridge_port)
-        form.addRow("", self.darktable_btn)
+        form.addRow(tr("tether.bridge_port"), port_row)
 
         box = QGroupBox(tr("tether.group"))
         box.setLayout(form)
@@ -202,10 +208,32 @@ class TetherTab(QWidget):
         self.state.setText(tr("tether.state_running", dir=cfg.outdir))
         self.log.add(tr("tether.log_started", dir=cfg.outdir))
 
+    @staticmethod
+    def _bridge_up(port: int, timeout: float = 4.0) -> bool:
+        """El puente arranca en un hilo: se comprueba que atiende de verdad."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            probe = socket.socket()
+            probe.settimeout(0.5)
+            try:
+                probe.connect(("127.0.0.1", port))
+                return True
+            except OSError:
+                time.sleep(0.2)
+            finally:
+                probe.close()
+        return False
+
     def open_darktable(self) -> None:
         """darktable sólo ve cámaras que libgphoto2 detecte: se abre con el shim."""
         from . import darktable
 
+        if self.bridge is None:                 # sin puente no hay nada que ver
+            self.bridge_on.setChecked(True)
+            self.start_bridge()
+            if not self._bridge_up(self.bridge_port.value()):
+                self.log.add(tr("tether.log_bridge_down"))
+                return
         proc = darktable.spawn(port=self.bridge_port.value())
         if proc is None:
             self.log.add(tr("tether.log_darktable_fail"))
@@ -232,7 +260,6 @@ class TetherTab(QWidget):
         self.log.add(tr("tether.log_bridge_hint"))
         self.poll.setEnabled(False)
         self.bridge_port.setEnabled(False)
-        self.darktable_btn.setEnabled(True)
 
     def _run(self, d: TetherDaemon) -> None:
         try:
@@ -253,7 +280,6 @@ class TetherTab(QWidget):
             self.log.add(tr("tether.log_bridge_stopped"))
         self.poll.setEnabled(True)
         self.bridge_port.setEnabled(not self.bridge_on.isChecked())
-        self.darktable_btn.setEnabled(False)
         self.button.setText(tr("btn.tether_start"))
         self.state.setText(tr("state.stopped"))
         self.log.add(tr("tether.log_stopping"))
