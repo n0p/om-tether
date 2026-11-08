@@ -119,18 +119,55 @@ Dentro de `application.cab` está la aplicación MFC (`OM Capture.exe`,
   propiedades, `0x94BA`–`0x94C4` modo transferencia/estación/ConnectPcInfo.
   Este proyecto usa esos códigos (son hechos, no código copiado).
 
+## Qué se ha reimplementado y de dónde sale
+
+Se han estudiado dos aplicaciones originales y se ha reimplementado su
+**comportamiento** desde cero: no se usa código del fabricante, sólo los hechos
+del protocolo deducidos de su tráfico y de la propia cámara.
+
+**OM Capture** (app de escritorio para Windows, tethering por Wi-Fi — la vía PTP/IP)
+
+| en el original | aquí |
+|---|---|
+| emparejar el ordenador con la cámara por USB, cuatro ranuras | `omtether pair` y «Emparejar (USB)…» en la GUI |
+| ventana de live view | `liveview` (MJPEG por HTTP), pestaña «Control remoto» |
+| botón de disparo y bulb | `remote`, `expose()` (exposición cronometrada) |
+| ISO, velocidad de obturación, calidad | ISO (`0xD1C0`) y velocidad (`0xD01C`), lectura y escritura |
+| descarga automática de cada foto | `daemon` (pestaña «Tether») |
+| explorar y descargar lo que hay en la tarjeta | `capture`, `watch` |
+| mantener el enlace vivo y reconectar | keep-alive `0x94BA`, reconexión con espera creciente |
+
+**OI.Share** (app móvil, punto de acceso propio de la cámara — la vía HTTP)
+
+| en el original | aquí |
+|---|---|
+| cambiar el modo de la cámara | `omtether app mode …` |
+| disparar (con o sin AF), abrir y cerrar bulb | `app shoot`, `app bulb` |
+| live view por HTTP | `app liveview` |
+| leer y escribir ajustes por nombre | `app props`, `app set` |
+| listar y descargar imágenes | `app ls`, `app get` |
+
+Fuera de alcance: control de grabación de vídeo, actualización de firmware,
+etiquetado GPS y copia/restauración de «myset».
+
 ## Estado
+
+Todo lo de abajo se ha ejecutado contra una **OM-1 Mark II real (firmware 1.00)**,
+por Wi-Fi en modo estación, con el cable USB sólo para el emparejamiento inicial:
 
 | Pieza | Estado |
 |---|---|
-| Transporte PTP/IP (handshake, canal de eventos, fases de datos) | implementado y probado contra un servidor simulado (`tests/`) |
-| Sesión PTP (DeviceInfo, propiedades, objetos) | implementado |
-| Descubrimiento (SSDP + escaneo del puerto 15740) | implementado |
-| Live view (`0x9484`) | implementado |
-| Disparo + descarga (`0x9481`, eventos, `GetObject`) | implementado |
-| Volcado en tiempo real (`watch`) | implementado |
-| Emparejamiento Wi-Fi (`0x94BF` SetConnectPcInfo por USB) | layout recuperado del binario; falta validar en hardware |
-| Probado contra hardware | **pendiente** |
+| Transporte PTP/IP (handshake, canal de eventos, fases de datos) | ✅ verificado en hardware y contra el simulador |
+| Emparejamiento por USB (`0x94BF` SetConnectPcInfo) | ✅ ranura escrita y releída de la cámara |
+| Sesión PTP (DeviceInfo, propiedades, objetos) | ✅ 48 operaciones por Wi-Fi (60 por USB) |
+| Descubrimiento (mDNS, SSDP, escaneo del 15740) | ✅ encuentra la cámara en la LAN |
+| Live view (`0x9484`) | ✅ JPEG 1024×768, ~1 fps |
+| Disparo + descarga (`0x9481`, eventos, `GetObject`) | ✅ 10 disparos seguidos, JPEG y RAW |
+| Volcado en tiempo real (`daemon`) | ✅ 3 JPG + 3 ORF (101 MB) en ~40 s |
+| ISO y velocidad de obturación | ✅ escritos y releídos (3200, 1/250, 2 s, 30 s) |
+| Exposición cronometrada (bulb) | ✅ tomas de 2-3 s |
+| Servicio INDI | ✅ BLOB verificado; misma vía de exposición que la CLI |
+| App de escritorio (PyQt6) | ✅ tres pestañas, bilingüe, live view, entrada de menú |
 
 ## Uso
 
@@ -233,16 +270,21 @@ el propio `discover` lo responderá en cuanto la tengas delante.
 
 ## Prueba de campo
 
-Con la cámara en modo tether Wi-Fi y en la misma red que el ordenador:
+Ésta es la secuencia que se ejecutó de verdad contra la OM-1 Mark II, y la que
+hay que repetir con otro cuerpo. Con la cámara en modo tether Wi-Fi y en la
+misma red que el ordenador:
 
 ```bash
 sudo tcpdump -ni any 'port 15740 or port 1900' &   # ver qué emite la cámara
 python3 -m omtether discover -v
 python3 -m omtether info --host <ip> -vv
+python3 -m omtether liveview --host <ip> --http 8080   # panel en el navegador
+python3 -m omtether remote --host <ip> --shots 10 --interval 2 --skip-raw
+python3 -m omtether daemon --host <ip> --out ~/Pictures/omtether
 ```
 
-Si `info` responde, el resto (live view, disparo, descarga) se puede validar ya
-con los comandos de arriba.
+Si `info` responde, el resto va igual: primero el live view, luego una serie
+corta y por último el daemon mientras disparas en el cuerpo.
 
 ## Estructura
 
@@ -271,16 +313,19 @@ Lo que funciona hoy, por Wi-Fi, contra la cámara:
 | `info` (DeviceInfo) | ✅ | 48 operaciones por Wi-Fi (60 por USB) |
 | live view | ✅ | `0x9484`, JPEG 1024×768 |
 | volcado en tiempo real | ✅ | `daemon`: eventos + sondeo, descarga atómica, estado persistente |
-| disparo remoto | ⚠️ | `0x9481(3)` **sólo en modo control desde el ordenador** (`0xD052=1`) |
-| control desde el ordenador | ⚠️ | la cámara lo concede **una vez por arranque**; después `DeviceBusy` |
+| disparo remoto | ✅ | `0x9481(3)` … `0x9481(6)`, evento `0xC102`; 10 disparos seguidos |
+| modo control desde el ordenador | ⚠️ | se concede **una vez por arranque**; **no hace falta** para disparar |
+| ISO / velocidad | ✅ | escritos y releídos de la cámara |
+| exposición cronometrada | ✅ | tomas de 2-3 s, obturador abierto y cerrado por el cliente |
 
-### La limitación del disparo remoto
+### Sobre el modo control desde el ordenador (`0xD052`)
 
-`0xD052 = 1` se acepta una vez por encendido de la cámara (con el live view
-apagado: con `0xD06D != 0` la escritura devuelve `0x2019`). Tras el primer
-disparo la propiedad vuelve a 2 y no hay manera de recuperarla sin reiniciar.
-Con el modo en 2, `0x9481` responde `0x2001` o `0x201D` pero **no genera
-fichero**: un ACK no es una foto.
+La cámara acepta `0xD052 = 1` una vez por encendido, y sólo con el live view
+apagado (con `0xD06D != 0` la escritura devuelve `0x2019`). **No hace falta**
+para disparar: `0x9481` funciona en modo estación normal. Lo que sí la tumba es
+sondear la tarjeta mientras escribe el RAW —puede caerse de la Wi-Fi—, así que
+el cliente espera el evento `0xC102` y mira la tarjeta una sola vez, unos
+segundos después.
 
 ### Receta para astrofotografía (la que funciona hoy)
 

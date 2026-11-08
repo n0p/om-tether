@@ -122,18 +122,55 @@ Inside `application.cab` is the MFC application (`OM Capture.exe`,
   `0x94BA`–`0x94C4` transfer/station mode and ConnectPcInfo. This project uses
   those codes (they are facts, not copied code).
 
+## What was reimplemented, and from where
+
+Two original apps were studied and their **behaviour** was reimplemented from
+scratch: no vendor code is used, only the protocol facts recovered from their
+traffic and from the camera itself.
+
+**OM Capture** (Windows desktop app, Wi-Fi tethering — the PTP/IP path)
+
+| in the original | here |
+|---|---|
+| pairing the computer with the camera over USB, four slots | `omtether pair`, and “Pair (USB)…” in the GUI |
+| live view window | `liveview` (MJPEG over HTTP), “Remote control” tab |
+| shutter button and bulb | `remote`, `expose()` (timed exposure) |
+| ISO, shutter speed, image quality | ISO (`0xD1C0`) and shutter (`0xD01C`), read and written |
+| automatic download of every shot | `daemon` (“Tether” tab) |
+| browsing and downloading what is on the card | `capture`, `watch` |
+| keeping the link alive and reconnecting | `0x94BA` keep-alive, reconnect with backoff |
+
+**OI.Share** (phone app, camera's own Wi-Fi access point — the HTTP path)
+
+| in the original | here |
+|---|---|
+| switching the camera mode | `omtether app mode …` |
+| shooting (with or without AF), bulb start/stop | `app shoot`, `app bulb` |
+| live view over HTTP | `app liveview` |
+| reading and writing camera settings by name | `app props`, `app set` |
+| listing and downloading images | `app ls`, `app get` |
+
+Out of scope: video recording control, firmware update, GPS tagging and myset
+backup/restore.
+
 ## Status
+
+Everything below has been run against a real **OM-1 Mark II (firmware 1.00)**,
+over Wi-Fi in station mode, with the USB cable only for the initial pairing:
 
 | Piece | Status |
 |---|---|
-| PTP/IP transport (handshake, event channel, data phases) | implemented and tested against a simulated server (`tests/`) |
-| PTP session (DeviceInfo, properties, objects) | implemented |
-| Discovery (SSDP + port 15740 scan) | implemented |
-| Live view (`0x9484`) | implemented |
-| Shutter + download (`0x9481`, events, `GetObject`) | implemented |
-| Real-time download (`watch`) | implemented |
-| Wi-Fi pairing (`0x94BF` SetConnectPcInfo over USB) | layout recovered from the binary; still to be validated on hardware |
-| Tested against hardware | **pending** |
+| PTP/IP transport (handshake, event channel, data phases) | ✅ verified on hardware and against the simulator |
+| USB pairing (`0x94BF` SetConnectPcInfo) | ✅ slot written and read back from the camera |
+| PTP session (DeviceInfo, properties, objects) | ✅ 48 operations over Wi-Fi (60 over USB) |
+| Discovery (mDNS, SSDP, port 15740 scan) | ✅ finds the camera on the LAN |
+| Live view (`0x9484`) | ✅ JPEG 1024×768, ~1 fps |
+| Shutter + download (`0x9481`, events, `GetObject`) | ✅ 10 shots in a row, JPEG and RAW |
+| Real-time download (`daemon`) | ✅ 3 JPG + 3 ORF (101 MB) in ~40 s |
+| ISO and shutter speed | ✅ written and read back (3200, 1/250, 2 s, 30 s) |
+| Timed exposure (bulb) | ✅ 2-3 s exposures |
+| INDI server | ✅ BLOB verified; same exposure path as the CLI |
+| Desktop app (PyQt6) | ✅ three tabs, bilingual, live view, menu entry |
 
 ## Usage
 
@@ -236,16 +273,21 @@ of you.
 
 ## Field test
 
-With the camera in Wi-Fi tether mode and on the same network as the computer:
+This is the sequence that was actually run on the OM-1 Mark II, and the one to
+repeat on another body. With the camera in Wi-Fi tether mode and on the same
+network as the computer:
 
 ```bash
 sudo tcpdump -ni any 'port 15740 or port 1900' &   # see what the camera emits
 python3 -m omtether discover -v
 python3 -m omtether info --host <ip> -vv
+python3 -m omtether liveview --host <ip> --http 8080   # panel in the browser
+python3 -m omtether remote --host <ip> --shots 10 --interval 2 --skip-raw
+python3 -m omtether daemon --host <ip> --out ~/Pictures/omtether
 ```
 
-If `info` answers, the rest (live view, shutter, download) can be validated
-right away with the commands above.
+If `info` answers, the rest works the same way: live view first, then a short
+series, then the daemon while you shoot on the body.
 
 ## Layout
 
@@ -274,16 +316,18 @@ What works today, over Wi-Fi, against the camera:
 | `info` (DeviceInfo) | ✅ | 48 operations over Wi-Fi (60 over USB) |
 | live view | ✅ | `0x9484`, JPEG 1024×768 |
 | real-time download | ✅ | `daemon`: events + polling, atomic download, persistent state |
-| remote shutter | ⚠️ | `0x9481(3)` **only in PC control mode** (`0xD052=1`) |
-| PC control | ⚠️ | the camera grants it **once per power-up**; afterwards `DeviceBusy` |
+| remote shutter | ✅ | `0x9481(3)` … `0x9481(6)`, event `0xC102`; 10 shots in a row |
+| PC control mode | ⚠️ | granted **once per power-up**; **not needed** for the shutter |
+| ISO / shutter speed | ✅ | written and read back from the camera |
+| timed exposure | ✅ | 2-3 s exposures, shutter opened and closed by the client |
 
-### The remote shutter limitation
+### About PC control mode (`0xD052`)
 
-`0xD052 = 1` is accepted once per camera power-up (with live view off: with
-`0xD06D != 0` the write returns `0x2019`). After the first shot the property
-goes back to 2 and there is no way to get it back without a restart. With the
-mode at 2, `0x9481` answers `0x2001` or `0x201D` but **produces no file**: an
-ACK is not a photo.
+The camera accepts `0xD052 = 1` once per power-up, and only with live view off
+(with `0xD06D != 0` the write returns `0x2019`). It is **not required** for the
+shutter: `0x9481` works in plain station mode. What does hurt is polling the
+card while the camera is writing the RAW — it can drop off Wi-Fi — so the client
+waits for the `0xC102` event and looks at the card once, a few seconds later.
 
 ### Astrophotography recipe (the one that works today)
 
