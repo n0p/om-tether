@@ -189,8 +189,12 @@ class PtpIpTransport:
         name: str | None = None,
         guid: bytes | None = None,
         timeout: float = 10.0,
+        negotiate: bool | None = None,
     ) -> None:
         self.host = host
+        # negotiate=True: probar todas las MACs locales (comportamiento normal).
+        # Con guid explícito y negotiate=None se usa sólo ese GUID.
+        self.negotiate = (guid is None) if negotiate is None else negotiate
         self.port = port
         self.event_port = event_port or port
         self.name = name or default_name()
@@ -213,7 +217,9 @@ class PtpIpTransport:
         log.info("connecting to %s:%d (PTP/IP) as %r", self.host, self.port, self.name)
         self._open_listener()
         last_exc: Exception | None = None
-        for guid in _guid_candidates(self.guid):
+        # con un GUID explícito no se prueban otros: quien pregunta quiere saber
+        # si ESE GUID vale (si no, "aceptado" para todos sería una mentira)
+        for guid in (_guid_candidates(self.guid) if self.negotiate else [self.guid]):
             self.guid = guid
             try:
                 self.cmd = socket.create_connection((self.host, self.port), timeout=self.timeout)
