@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import logging
 import random
+import shutil
 import socket
+import subprocess
 import struct
 import threading
 import time
@@ -211,17 +213,46 @@ class Advertiser(threading.Thread):
     puente sin configurar nada: su driver de puerto ptpip pregunta por mDNS.
     """
 
-    def __init__(self, port: int, instance: str = "omtether", address: str = "127.0.0.1") -> None:
+    def __init__(self, port: int, instance: str = "omtether", address: str = "0.0.0.0") -> None:
         super().__init__(daemon=True)
         self.port = port
         self.address = address
+        self._child = None
         self.instance = "%s-%04x._ptp._tcp.local" % (instance, random.randint(0, 0xFFFF))
         self.host = "%s.local" % instance
         self._stop = threading.Event()
         self._sock: socket.socket | None = None
 
+    def _publish_with_avahi(self) -> bool:
+        """Si hay avahi, se publica por su CLI: es quien tiene el puerto 5353."""
+        exe = shutil.which("avahi-publish-service")
+        if not exe:
+            return False
+        try:
+            self._child = subprocess.Popen(
+                [exe, "--no-fail", self.instance.split("._")[0], "_ptp._tcp", str(self.port),
+                 "txtvers=1", "vid=33A2", "bridge=1"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            return False
+        time.sleep(0.4)
+        if self._child.poll() is not None:
+            log.debug("mDNS: avahi-publish-service terminó (%d)", self._child.returncode)
+            self._child = None
+            return False
+        log.info("mDNS: publicado con avahi como %s (_ptp._tcp, puerto %d)",
+                 self.instance.split("._")[0], self.port)
+        return True
+
     def stop(self) -> None:
         self._stop.set()
+        if self._child is not None:
+            try:
+                self._child.terminate()
+                self._child.wait(timeout=2)
+            except Exception:  # noqa: BLE001
+                pass
+            self._child = None
         if self._sock is not None:
             try:
                 self._sock.close()
@@ -239,6 +270,10 @@ class Advertiser(threading.Thread):
         return out
 
     def run(self) -> None:
+        if self._publish_with_avahi():
+            while not self._stop.is_set():
+                time.sleep(0.5)
+            return
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

@@ -27,7 +27,9 @@ that only list auto-detected cameras (darktable) see it without configuration.
 from __future__ import annotations
 
 import logging
+import re
 import socket
+import subprocess
 import struct
 import threading
 import time
@@ -76,6 +78,32 @@ def recv_packet(sock: socket.socket, timeout: float) -> tuple[int, bytes]:
 
 def send_packet(sock: socket.socket, ptype: int, payload: bytes = b"") -> None:
     sock.sendall(struct.pack("<II", 8 + len(payload), ptype) + payload)
+
+
+def local_addresses() -> set[str]:
+    """Direcciones de este equipo: el puente sólo atiende a quien está en casa."""
+    ips = {"127.0.0.1", "::1"}
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ips.add(info[4][0])
+    except socket.gaierror:
+        pass
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("192.0.2.1", 9))     # no manda nada, sólo elige interfaz
+        ips.add(probe.getsockname()[0])
+    except OSError:
+        pass
+    finally:
+        probe.close()
+    # todas las interfaces (avahi puede publicar cualquiera de ellas)
+    try:
+        out = subprocess.run(["ip", "-4", "-o", "addr"], capture_output=True,
+                             text=True, timeout=3).stdout
+        ips.update(re.findall(r"inet (\d+\.\d+\.\d+\.\d+)", out))
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return ips
 
 
 def encode_name(name: str) -> bytes:
@@ -177,6 +205,21 @@ class Bridge(threading.Thread):
         log.info("puente PTP/IP escuchando en %s:%d", self.cfg.listen_host, self.cfg.listen_port)
 
         if self.cfg.mdns:
+            # avahi publica la IP real del equipo, así que hay que escuchar en
+            # todas las interfaces (y filtrar por dirección de origen abajo)
+            if self.cfg.listen_host == "127.0.0.1":
+                try:
+                    srv.close()
+                    srv = socket.socket()
+                    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    srv.bind(("0.0.0.0", self.cfg.listen_port))
+                    srv.listen(4)
+                    srv.settimeout(0.5)
+                    self._server = srv
+                    log.info("puente: escuchando en todas las interfaces (mDNS)")
+                except OSError as exc:
+                    log.warning("puente: no se pudo abrir en 0.0.0.0 (%s); se queda en %s",
+                                exc, self.cfg.listen_host)
             self._advertiser = mdns.Advertiser(self.cfg.listen_port, self.cfg.name)
             self._advertiser.start()
 
@@ -189,6 +232,13 @@ class Bridge(threading.Thread):
                 continue
             except OSError:
                 break
+            if peer[0] not in local_addresses():
+                log.warning("puente: conexión de %s rechazada (no es local)", peer[0])
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+                continue
             self.stats.connections += 1
             log.info("puente: conexión desde %s", peer[0])
             threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
