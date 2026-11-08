@@ -14,7 +14,7 @@ optdepends=(
 )
 options=(!emptydirs)
 source=("$pkgname-$pkgver.tar.gz::https://github.com/n0p/om-tether/archive/refs/tags/v0.5.0-beta2.tar.gz")
-sha256sums=('9fc7cc645ae05084b95060814d136c9db159ca381d1f48037421a905a374f0c8')
+sha256sums=('bc5847fac0721fb00584cf119416f7778f3126cefde421a225852e597a087042')
 
 _srcdir="om-tether-0.5.0-beta2"
 
