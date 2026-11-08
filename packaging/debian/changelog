@@ -1,0 +1,12 @@
+omtether (0.5.0~beta1-1) unstable; urgency=medium
+
+  * First public beta.
+  * PTP/IP transport, session and discovery (mDNS, SSDP, port scan).
+  * USB pairing (ConnectPcInfo) with the reversed-MAC initiator GUID.
+  * Real-time download daemon, remote capture, timed exposure and ISO.
+  * Live view, MJPEG server and an INDI server for KStars/Ekos.
+  * PyQt6 desktop app (tether / remote control / astrophotography), bilingual
+    UI (Spanish/English), desktop entry and icon.
+  * CLI for everything, in English and Spanish docs.
+
+ -- n0p <n0p@users.noreply.github.com>  Sun, 08 Nov 2026 20:00:00 +0100

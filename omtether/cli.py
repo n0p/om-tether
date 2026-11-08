@@ -309,7 +309,19 @@ def cmd_gui(args) -> int:
                   file=sys.stderr)
             os.execv("/usr/bin/python3",
                      ["/usr/bin/python3", "-m", "omtether", "gui"])
-        print("falta PyQt6: instala python-pyqt6 (%s)" % exc, file=sys.stderr)
+        # lanzada desde el menú de aplicaciones no hay terminal donde leer el
+        # error: se avisa con un diálogo si hay alguno disponible
+        msg = ("No se puede abrir la interfaz gráfica: falta PyQt6.\n\n"
+               "Instala python-pyqt6 (Arch) o python3-pyqt6 (Debian) y vuelve "
+               "a intentarlo.\n\n%s" % exc)
+        print(msg, file=sys.stderr)
+        for cmd in (["zenity", "--error", "--no-wrap", "--title=omtether", "--text=" + msg],
+                    ["kdialog", "--title", "omtether", "--error", msg],
+                    ["xmessage", "-center", msg]):
+            try:
+                os.execvp(cmd[0], cmd)
+            except OSError:
+                continue
         return 2
     return gui_main()
 
@@ -532,6 +544,9 @@ def cmd_pair(args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="omtether", description="OM System / Olympus tethering over PTP/IP")
     p.add_argument("-v", "--verbose", action="count", default=0, help="more logging (-vv for hex dumps)")
+    from . import __version__
+    p.add_argument("-V", "--version", action="version",
+                   version="omtether %s" % __version__)
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def add_verbose(sp):

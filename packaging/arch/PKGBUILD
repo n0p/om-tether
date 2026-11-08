@@ -1,0 +1,45 @@
+# Maintainer: n0p <n0p@users.noreply.github.com>
+pkgname=omtether
+pkgver=0.5.0beta1
+pkgrel=1
+pkgdesc="Tethering, remote control and astrophotography for OM System / Olympus cameras over PTP/IP"
+arch=('any')
+url="https://github.com/n0p/om-tether"
+license=('MIT')
+depends=('python')
+optdepends=(
+  'python-pyqt6: desktop app (omtether gui)'
+  'python-pyusb: USB pairing (omtether pair)'
+)
+options=(!emptydirs)
+source=("$pkgname-$pkgver.tar.gz::https://github.com/n0p/om-tether/archive/refs/tags/v0.5.0-beta1.tar.gz")
+sha256sums=('SKIP')
+
+_srcdir="om-tether-0.5.0-beta1"
+
+package() {
+  local pyver
+  pyver=$(python -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+
+  install -dm755 "$pkgdir/usr/lib/python$pyver/site-packages"
+  cp -a "$_srcdir/omtether" "$pkgdir/usr/lib/python$pyver/site-packages/"
+
+  install -Dm755 /dev/stdin "$pkgdir/usr/bin/omtether" <<'EOF'
+#!/usr/bin/env python3
+import sys
+from omtether.cli import main
+
+sys.exit(main())
+EOF
+
+  install -Dm644 "$_srcdir/packaging/common/omtether.desktop" \
+    "$pkgdir/usr/share/applications/omtether.desktop"
+  install -Dm644 "$_srcdir/packaging/common/omtether.svg" \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/omtether.svg"
+  install -Dm644 "$_srcdir/packaging/common/omtether-daemon.service" \
+    "$pkgdir/usr/lib/systemd/user/omtether-daemon.service"
+  install -Dm644 "$_srcdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$_srcdir/README.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 "$_srcdir/README.es.md" "$pkgdir/usr/share/doc/$pkgname/README.es.md"
+  install -Dm644 "$_srcdir/docs/PROTOCOL.md" "$pkgdir/usr/share/doc/$pkgname/PROTOCOL.md"
+}

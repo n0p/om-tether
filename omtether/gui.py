@@ -27,7 +27,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, QSettings, Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtGui import QIcon, QImage, QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout,
     QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPlainTextEdit,
@@ -689,11 +689,30 @@ def initial_language(settings: QSettings | None = None) -> str:
     return str(saved) if saved else detect_default_language()
 
 
+def app_icon() -> QIcon:
+    """Icono de la app: del tema y, si no está indexado, del fichero instalado."""
+    icon = QIcon.fromTheme("omtether")
+    if not icon.isNull():
+        return icon
+    here = Path(__file__).resolve().parent
+    for cand in (Path("/usr/share/icons/hicolor/scalable/apps/omtether.svg"),
+                 Path.home() / ".local/share/icons/hicolor/scalable/apps/omtether.svg",
+                 here.parent / "packaging/common/omtether.svg"):
+        if cand.is_file():
+            return QIcon(str(cand))
+    return QIcon()
+
+
 def main() -> int:
     app = QApplication(sys.argv)
+    app.setApplicationName("omtether")
+    app.setDesktopFileName("omtether")
     set_language(initial_language())
     win = MainWindow()
     _keep_alive(win)
+    icon = app_icon()
+    if not icon.isNull():
+        app.setWindowIcon(icon)
     win.show()
     return app.exec()
 

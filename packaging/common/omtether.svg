@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="#1b1d21"/>
+  <!-- cuerpo de la cámara -->
+  <rect x="10" y="22" width="36" height="26" rx="4" fill="#e8e8ea"/>
+  <rect x="14" y="17" width="12" height="6" rx="2" fill="#e8e8ea"/>
+  <circle cx="28" cy="35" r="9" fill="#1b1d21"/>
+  <circle cx="28" cy="35" r="6" fill="#4a90d9"/>
+  <circle cx="26" cy="33" r="2" fill="#cfe6fb"/>
+  <!-- señal de tethering -->
+  <g fill="none" stroke="#4a90d9" stroke-width="2.4" stroke-linecap="round">
+    <path d="M46 30a10 10 0 0 1 0 14"/>
+    <path d="M51 25a17 17 0 0 1 0 24"/>
+  </g>
+</svg>

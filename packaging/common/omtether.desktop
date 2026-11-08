@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=omtether
+GenericName=Camera tethering
+Comment=Tethering, remote control and astrophotography for OM System / Olympus cameras
+Comment[es]=Tethering, control remoto y astrofotografía para cámaras OM System / Olympus
+Exec=omtether gui
+TryExec=omtether
+Icon=omtether
+Terminal=false
+StartupNotify=true
+StartupWMClass=omtether
+Categories=Graphics;Photography;
+Keywords=camera;tethering;photo;olympus;om-system;astro;

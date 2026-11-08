@@ -31,6 +31,26 @@ python3 -m omtether remote --host <ip> --indi        # servicio INDI en :7624
 python3 -m omtether gui
 ```
 
+### Paquetes
+
+En `packaging/` hay paquetes listos:
+
+- **Arch / AUR** — `packaging/arch/PKGBUILD` instala el módulo Python, el
+  lanzador `omtether`, la entrada de menú, el icono y la unidad de systemd de
+  usuario. Se compila con `makepkg -si` dentro de ese directorio (o se instala
+  el paquete `omtether` de AUR cuando esté publicado).
+- **Debian / Ubuntu** — `python3 packaging/debian/build_deb.py` genera
+  `dist/omtether_<versión>_all.deb`, que se instala con
+  `sudo apt install ./omtether_<versión>_all.deb`. Sólo depende de `python3`;
+  la GUI necesita `python3-pyqt6` y el emparejamiento por USB `python3-usb`
+  (Recommends).
+
+Los dos paquetes añaden **omtether al menú de aplicaciones**
+(Gráficos/Fotografía), así que la GUI se abre sin tocar la consola. La entrada
+de menú lanza `omtether gui`; el daemon es un servicio de usuario:
+`systemctl --user enable --now omtether-daemon` (antes, pon la IP de tu cámara
+en la unidad).
+
 ### La aplicación de escritorio
 
 **Cómo se lanza**: `python3 -m omtether gui` desde el directorio del repo. Si el
