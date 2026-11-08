@@ -96,6 +96,10 @@ def test_daemon_skip(cam: MockCamera) -> bool:
                  "%d descargados, %d jpg" % (daemon.stats.downloaded, len(jpgs)))
 
 
+def test_bridge() -> bool:
+    return subprocess.call([sys.executable, "-m", "tests.test_bridge"], cwd=ROOT) == 0
+
+
 def test_gphoto() -> bool:
     return subprocess.call([sys.executable, "-m", "tests.test_gphoto"], cwd=ROOT) == 0
 
@@ -113,6 +117,7 @@ def main() -> int:
     cam.start()
     try:
         results = [
+            check("bridge (PTP/IP server)", test_bridge()),
             check("gphoto helpers", test_gphoto()),
             check("parsers", test_parsers()),
             check("mDNS _ptp._tcp browse", test_mdns()),

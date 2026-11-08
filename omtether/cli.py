@@ -326,6 +326,36 @@ def cmd_gui(args) -> int:
     return gui_main()
 
 
+def cmd_bridge(args) -> int:
+    """Puente PTP/IP para que libgphoto2 (darktable, digiKam…) use la cámara."""
+    import threading as _th
+    from pathlib import Path as _Path
+
+    from .bridge import Bridge, BridgeConfig
+
+    outdir = _Path(args.out).expanduser() if args.out else None
+    cfg = BridgeConfig(host=args.host, host_port=args.host_port,
+                       listen_host=args.listen, listen_port=args.port,
+                       outdir=outdir, download=not args.no_download, mdns=args.mdns)
+    bridge = Bridge(cfg)
+    bridge.start()
+    print("puente en ptpip:%s:%d -> cámara %s" % (args.listen, args.port, args.host))
+    if outdir:
+        print("descarga en %s" % outdir)
+    if args.mdns:
+        print("anunciado por mDNS (_ptp._tcp) para que darktable lo descubra")
+    print("en otra terminal:  gphoto2 --camera \"PTP/IP Camera\" --port ptpip:%s"
+          % args.listen)
+    try:
+        while True:
+            _th.Event().wait(1.0)
+    except KeyboardInterrupt:
+        print("\ncerrando")
+    finally:
+        bridge.stop()
+    return 0
+
+
 def cmd_gphoto(args) -> int:
     """Configura libgphoto2 (darktable, digiKam…) para hablar con la cámara."""
     from . import gphoto
@@ -664,6 +694,19 @@ def build_parser() -> argparse.ArgumentParser:
     g = sub.add_parser("gui", help="desktop app (PyQt6): tether, remote and astro")
     g.add_argument("-v", "--verbose", action="count", default=0)
     g.set_defaults(func=cmd_gui)
+
+    ap_br = sub.add_parser("bridge",
+                           help="PTP/IP bridge so libgphoto2 (darktable) can use the camera")
+    ap_br.add_argument("--host", required=True, help="camera IP")
+    ap_br.add_argument("--listen", default="127.0.0.1", help="address to listen on")
+    ap_br.add_argument("--port", type=int, default=15740, help="port to listen on")
+    ap_br.add_argument("--host-port", type=int, default=15740,
+                       help="camera port (15740 unless you are testing against the mock)")
+    ap_br.add_argument("--out", help="download every new photo to this directory")
+    ap_br.add_argument("--no-download", action="store_true", help="only bridge, no download")
+    ap_br.add_argument("--mdns", action="store_true",
+                       help="advertise _ptp._tcp so darktable auto-detects it")
+    ap_br.set_defaults(func=cmd_bridge)
 
     ap_gph = sub.add_parser("gphoto",
                             help="configure libgphoto2 (darktable, digiKam) for this camera")

@@ -200,3 +200,11 @@ Verified against the camera:
 INDI publishes `CCD_EXPOSURE` (seconds: sets the speed or does bulb) and
 `CCD_ISO` (number, range read from the camera). The astrophotography tab has
 ISO and exposure fields; 0 means "leave as is" / "camera setting".
+
+## PTP/IP bridge (darktable, digiKam)
+
+`omtether bridge --host <ip>` (or the checkbox in the Tether tab) exposes the
+camera on `127.0.0.1:15740` so libgphoto2 can use it unpatched: it accepts any
+initiator GUID, intercepts `0xD052`, synthesises the `0xC103`/`0xC102` events
+after a capture (the body sends none in station mode) and keeps downloading the
+photos. With `--mdns` it advertises `_ptp._tcp` and darktable finds it.

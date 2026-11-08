@@ -81,6 +81,13 @@ ES: dict[str, str] = {
 
     # pestaña Tether
     "tether.group": "Volcado en tiempo real (tether)",
+    "tether.bridge": "Puente PTP/IP (darktable, digiKam, gPhoto2)",
+    "tether.bridge_port": "Puerto del puente:",
+    "tether.state_bridge": "puente en 127.0.0.1:{port}",
+    "tether.log_bridge": "puente PTP/IP escuchando en el puerto {port} (también por mDNS)",
+    "tether.log_bridge_hint": ("en darktable: sala de tethering; en consola: gphoto2 "
+                              "--camera \"PTP/IP Camera\" --port ptpip:127.0.0.1"),
+    "tether.log_bridge_stopped": "puente detenido",
     "label.poll": "Sondeo:",
     "btn.tether_start": "Iniciar volcado",
     "btn.tether_stop": "Detener volcado",
@@ -219,6 +226,13 @@ EN: dict[str, str] = {
 
     # Tether tab
     "tether.group": "Real-time download (tether)",
+    "tether.bridge": "PTP/IP bridge (darktable, digiKam, gPhoto2)",
+    "tether.bridge_port": "Bridge port:",
+    "tether.state_bridge": "bridge on 127.0.0.1:{port}",
+    "tether.log_bridge": "PTP/IP bridge listening on port {port} (also over mDNS)",
+    "tether.log_bridge_hint": ("darktable: tethering view; console: gphoto2 "
+                              "--camera \"PTP/IP Camera\" --port ptpip:127.0.0.1"),
+    "tether.log_bridge_stopped": "bridge stopped",
     "label.poll": "Polling:",
     "btn.tether_start": "Start tethering",
     "btn.tether_stop": "Stop tethering",

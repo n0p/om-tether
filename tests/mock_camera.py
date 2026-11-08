@@ -133,6 +133,20 @@ class MockCamera(threading.Thread):
                 _send(conn, 10, struct.pack("<I", xid) + DEVICE_INFO)
                 _send(conn, 12, struct.pack("<I", xid))
                 _send(conn, 7, struct.pack("<HI", 0x2001, xid))
+            elif code == 0x1004:  # GetStorageIDs
+                ids = struct.pack("<I", 1) + struct.pack("<I", 0x00010001)
+                _send(conn, 9, struct.pack("<IQ", xid, len(ids)))
+                _send(conn, 10, struct.pack("<I", xid) + ids)
+                _send(conn, 12, struct.pack("<I", xid))
+                _send(conn, 7, struct.pack("<HI", 0x2001, xid))
+            elif code == 0x1005:  # GetStorageInfo
+                info = (struct.pack("<HH", 0x0002, 0x0003) + struct.pack("<Q", 64 << 30)
+                        + struct.pack("<Q", 32 << 30) + struct.pack("<I", 0)
+                        + _str("Mock card") + _str("MOCKVOL") + _str(""))
+                _send(conn, 9, struct.pack("<IQ", xid, len(info)))
+                _send(conn, 10, struct.pack("<I", xid) + info)
+                _send(conn, 12, struct.pack("<I", xid))
+                _send(conn, 7, struct.pack("<HI", 0x2001, xid))
             elif code == 0x1015:  # GetDevicePropValue
                 value = {0xD052: struct.pack("<H", 2), 0xD06D: struct.pack("<I", 0x04000300), 0xD0DC: struct.pack("<H", 2)}.get(params[0], struct.pack("<H", 0))
                 _send(conn, 9, struct.pack("<IQ", xid, len(value)))

@@ -36,6 +36,7 @@ from PyQt6.QtWidgets import (
 
 from . import discovery, olympus, ptp
 from .gui_setup import OnboardDialog, ScanDialog
+from .bridge import Bridge, BridgeConfig
 from .daemon import DaemonConfig, TetherDaemon
 from .i18n import LANGUAGES, detect_default_language, get_language, set_language, tr
 from .indi import DEFAULT_PORT as INDI_PORT
@@ -132,6 +133,7 @@ class TetherTab(QWidget):
     def __init__(self, host_edit: QLineEdit) -> None:
         super().__init__()
         self.daemon: TetherDaemon | None = None
+        self.bridge: Bridge | None = None
         self.thread: threading.Thread | None = None
 
         self.host = host_edit
@@ -146,10 +148,18 @@ class TetherTab(QWidget):
         self.state = QLabel(tr("state.stopped"))
         self.log = LogPane()
 
+        self.bridge_on = QCheckBox(tr("tether.bridge"))
+        self.bridge_port = QSpinBox()
+        self.bridge_port.setRange(1024, 65535)
+        self.bridge_port.setValue(15740)
+        self.bridge_on.toggled.connect(self.bridge_port.setEnabled)
+
         form = QFormLayout()
         form.addRow(tr("label.directory"), path_row(self.outdir))
         form.addRow(tr("label.format"), self.fmt)
         form.addRow(tr("label.poll"), self.poll)
+        form.addRow("", self.bridge_on)
+        form.addRow(tr("tether.bridge_port"), self.bridge_port)
 
         box = QGroupBox(tr("tether.group"))
         box.setLayout(form)
@@ -162,12 +172,15 @@ class TetherTab(QWidget):
         self.button.clicked.connect(self.toggle)
 
     def toggle(self) -> None:
-        if self.daemon is None:
+        if self.daemon is None and self.bridge is None:
             self.start()
         else:
             self.stop()
 
     def start(self) -> None:
+        if self.bridge_on.isChecked():
+            self.start_bridge()
+            return
         cfg = DaemonConfig(
             host=self.host.text().strip(),
             outdir=Path(self.outdir.text()).expanduser(),
@@ -185,6 +198,27 @@ class TetherTab(QWidget):
         self.state.setText(tr("tether.state_running", dir=cfg.outdir))
         self.log.add(tr("tether.log_started", dir=cfg.outdir))
 
+    def start_bridge(self) -> None:
+        """Puente PTP/IP: la cámara se expone a darktable/digiKam y sigue volcando."""
+        outdir = Path(self.outdir.text()).expanduser()
+        outdir.mkdir(parents=True, exist_ok=True)
+        cfg = BridgeConfig(
+            host=self.host.text().strip(),
+            outdir=outdir,
+            listen_port=self.bridge_port.value(),
+            mdns=True,
+            skip_raw=fmt_flags(self.fmt)[0],
+            skip_jpeg=fmt_flags(self.fmt)[1],
+        )
+        self.bridge = Bridge(cfg)
+        self.bridge.start()
+        self.button.setText(tr("btn.tether_stop"))
+        self.state.setText(tr("tether.state_bridge", port=cfg.listen_port))
+        self.log.add(tr("tether.log_bridge", port=cfg.listen_port))
+        self.log.add(tr("tether.log_bridge_hint"))
+        self.poll.setEnabled(False)
+        self.bridge_port.setEnabled(False)
+
     def _run(self, d: TetherDaemon) -> None:
         try:
             stats = d.run()
@@ -198,6 +232,12 @@ class TetherTab(QWidget):
         if self.daemon is not None:
             self.daemon.stop()
             self.daemon = None
+        if self.bridge is not None:
+            self.bridge.stop()
+            self.bridge = None
+            self.log.add(tr("tether.log_bridge_stopped"))
+        self.poll.setEnabled(True)
+        self.bridge_port.setEnabled(not self.bridge_on.isChecked())
         self.button.setText(tr("btn.tether_start"))
         self.state.setText(tr("state.stopped"))
         self.log.add(tr("tether.log_stopping"))
@@ -654,8 +694,11 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # noqa: N802
         for tab in (self.tether, self.remote, self.astro):
             try:
-                if tab is self.tether and tab.daemon is not None:
-                    tab.daemon.stop()
+                if tab is self.tether:
+                    if tab.daemon is not None:
+                        tab.daemon.stop()
+                    if tab.bridge is not None:
+                        tab.bridge.stop()
                 if tab is not self.tether and tab.worker is not None:
                     tab.worker.stop()
             except Exception:  # noqa: BLE001

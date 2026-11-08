@@ -13,8 +13,10 @@ the SRV/TXT/A records of the answers.
 from __future__ import annotations
 
 import logging
+import random
 import socket
 import struct
+import threading
 import time
 
 log = logging.getLogger(__name__)
@@ -185,6 +187,117 @@ def resolve(records: dict) -> list[dict]:
 def parse_response(data: bytes) -> list[dict]:
     """Extract PTP/IP service instances from one mDNS response packet."""
     return resolve(parse_records(data))
+
+
+# --------------------------------------------------------------------------
+# anuncio del puente PTP/IP (para que darktable lo descubra solo)
+# --------------------------------------------------------------------------
+def bridge_guid() -> bytes:
+    """GUID que el puente dice ser; libgphoto2 no lo valida."""
+    return b"\x00" * 8 + b"omtether"
+
+
+def _rr(name: str, rtype: int, rdata: bytes, ttl: int = 120,
+        cache_flush: bool = True) -> bytes:
+    rclass = CLASS_IN | (0x8000 if cache_flush else 0)
+    return (_encode_name(name) + struct.pack(">HHIH", rtype, rclass, ttl, len(rdata))
+            + rdata)
+
+
+class Advertiser(threading.Thread):
+    """Responde a las consultas `_ptp._tcp.local` con un puerto de este equipo.
+
+    Es lo que hace que darktable (que sólo lista cámaras autodetectadas) vea el
+    puente sin configurar nada: su driver de puerto ptpip pregunta por mDNS.
+    """
+
+    def __init__(self, port: int, instance: str = "omtether", address: str = "127.0.0.1") -> None:
+        super().__init__(daemon=True)
+        self.port = port
+        self.address = address
+        self.instance = "%s-%04x._ptp._tcp.local" % (instance, random.randint(0, 0xFFFF))
+        self.host = "%s.local" % instance
+        self._stop = threading.Event()
+        self._sock: socket.socket | None = None
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._sock is not None:
+            try:
+                self._sock.close()
+            except OSError:
+                pass
+
+    def _records(self) -> bytes:
+        txt = b"".join(bytes([len(part)]) + part for part in
+                       (b"txtvers=1", b"vid=33A2", b"bridge=1"))
+        out = _rr(SERVICE, TYPE_PTR, _encode_name(self.instance), cache_flush=False)
+        out += _rr(self.instance, TYPE_SRV,
+                   struct.pack(">HHH", 0, 0, self.port) + _encode_name(self.host))
+        out += _rr(self.instance, TYPE_TXT, txt)
+        out += _rr(self.host, TYPE_A, socket.inet_aton(self.address))
+        return out
+
+    def run(self) -> None:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, "SO_REUSEPORT"):
+                try:
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                except OSError:
+                    pass
+            sock.bind(("", MDNS_PORT))
+            mreq = struct.pack("4s4s", socket.inet_aton(MDNS_ADDR),
+                               socket.inet_aton("0.0.0.0"))
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+            sock.settimeout(0.5)
+        except OSError as exc:
+            log.warning("mDNS: no se pudo anunciar el puente (%s)", exc)
+            return
+        self._sock = sock
+        log.info("mDNS: anunciando %s -> %s:%d", self.instance, self.address, self.port)
+        answer = self._records()
+        # un anuncio espontáneo acelera el descubrimiento
+        for _ in range(2):
+            try:
+                sock.sendto(_header(0, 0, 0, 4) + answer, (MDNS_ADDR, MDNS_PORT))
+            except OSError:
+                pass
+            time.sleep(0.2)
+        while not self._stop.is_set():
+            try:
+                data, addr = sock.recvfrom(9000)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            try:
+                reader = _Reader(data)
+                reader.u16()
+                flags = reader.u16()
+                qd = reader.u16()
+                if flags & 0x8000:      # es una respuesta, no una pregunta
+                    continue
+                wanted = False
+                for _ in range(qd):
+                    name = reader.name()
+                    qtype = reader.u16()
+                    reader.u16()
+                    if name.lower() in (SERVICE, self.instance.lower()) or qtype in (TYPE_PTR, 255):
+                        wanted = True
+                if not wanted:
+                    continue
+                payload = _header(0, 0x8400, 0, 4) + answer
+                sock.sendto(payload, (MDNS_ADDR, MDNS_PORT))
+                if addr[0] != "0.0.0.0":
+                    sock.sendto(payload, (addr[0], addr[1]))
+            except Exception as exc:  # noqa: BLE001
+                log.debug("mDNS: consulta descartada: %s", exc)
+
+
+def _header(qid: int, flags: int, qd: int, an: int) -> bytes:
+    return struct.pack(">HHHHHH", qid, flags, qd, an, 0, 0)
 
 
 def _open_mdns_sockets() -> tuple[socket.socket, socket.socket | None]:

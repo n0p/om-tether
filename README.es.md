@@ -119,6 +119,42 @@ carpeta. El arreglo bueno (probar las MACs locales en vez de inventar un GUID, y
 esperar al evento `0xC102` antes de tocar la tarjeta) va en
 `camlibs/ptp2/ptpip.c`.
 
+## Usar la cámara desde darktable, digiKam… (puente PTP/IP)
+
+darktable no tiene API de plugins para el tethering: va a través de libgphoto2, y
+el driver `ptp2` tropieza con tres cosas de este cuerpo — quiere el GUID del
+iniciador con una MAC emparejada, escribe `0xD052` al arrancar (y eso saca la
+cámara de la Wi-Fi) y en modo estación la cámara hace la foto **sin anunciar
+ningún evento**, así que libgphoto2 espera 65 s y falla.
+
+En vez de parchear libgphoto2, `omtether` puede ponerse en medio:
+
+```
+darktable ── gphoto2 ──> 127.0.0.1:15740 (puente) ──> cámara
+```
+
+Marca la casilla **«Puente PTP/IP (darktable, digiKam, gPhoto2)»** en la pestaña
+Tether, o lánzalo desde la consola:
+
+```bash
+omtether bridge --host <ip-de-la-cámara> --out ~/Pictures/omtether --mdns
+```
+
+El puente acepta el GUID que le mande libgphoto2, reenvía las operaciones,
+responde a las escrituras de `0xD052` sin tocar la cámara, vigila la tarjeta tras
+el disparo y **fabrica** los eventos `0xC103`/`0xC102` que libgphoto2 espera. Con
+`--mdns` se anuncia como `_ptp._tcp`, así que darktable —que sólo lista cámaras
+autodetectadas— lo ve sin configurar nada. Y sigue volcando cada foto nueva al
+directorio de destino, así que el mismo proceso hace de daemon.
+
+Después:
+
+```bash
+gphoto2 --camera "PTP/IP Camera" --port ptpip:127.0.0.1 --summary
+```
+
+o abre darktable y entra en la sala de tethering.
+
 ## Qué hay dentro del instalador original
 
 `OCSetup.exe` es un bootstrapper con un CAB embebido:
